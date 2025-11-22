@@ -1,0 +1,16 @@
+feature_cols:
+- google_ads_adstock
+- facebook_ads_adstock
+- influencer_adstock
+- google_ads_sat
+- facebook_ads_sat
+- influencer_sat
+- discount
+- google_ads_7d_mean
+- facebook_ads_7d_mean
+- influencer_7d_mean
+- is_weekend
+n_test: 31
+n_train: 121
+r2: 0.07436400354910677
+rmse: 977.7163285563339

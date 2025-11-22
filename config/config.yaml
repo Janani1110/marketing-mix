@@ -1,0 +1,21 @@
+data:
+  historical_path: "data/historical_data.csv"
+  streamed_path: "data/streamed_data.csv"
+  clean_path: "data/clean_data.csv"
+  stream_interval_sec: 60  # seconds between generated rows
+
+features:
+  adstock_decay: 0.6
+  hill_alpha: 1.0
+  hill_beta: 1.5
+
+model:
+  save_path: "models/mmm_model.pkl"
+  target: "revenue"
+
+optimizer:
+  budget: 10000
+
+retrain:
+  enabled: true
+  run_every_minutes: 5
