@@ -1,75 +1,96 @@
+# src/optimizer.py
 """
-src/optimizer.py
-
-Simple budget optimizer that uses channel ROI approximations derived from model coeffs
-and allocates budget to maximize estimated revenue given a total budget.
-
-This is a linear approximation (sufficient for a demo). For more realistic non-linear
-response curves, you can use non-linear solvers or discretization.
+Safe greedy budget allocator that uses the trained pipeline + metadata.
 """
 
-import yaml
-import pickle
-import os
-from ortools.linear_solver import pywraplp
-from src.predict import load_model_and_meta  # note: placeholder to ensure import; not used
+import pandas as pd
+import numpy as np
 
-CONFIG_PATH = "config/config.yaml"
-MODEL_FILE = "models/mmm_model.pkl"
-META_FILE = "models/model_metadata.yaml"
+from src.predict import load_pipeline_and_meta
+from src.feature_engineering import prepare_features
+from src.etl import load_and_clean
 
-def load_model_coefficients():
-    with open(MODEL_FILE, "rb") as f:
-        model = pickle.load(f)
-    with open(META_FILE, "r") as f:
-        meta = yaml.safe_load(f)
-    feature_cols = meta["feature_cols"]
-    coefs = dict(zip(feature_cols, model.coef_))
-    return coefs
+def _prepare_latest_and_feature_cols(meta):
+    df = load_and_clean()
+    df = prepare_features(df)
+    latest = df.tail(1).copy().reset_index(drop=True)
+    feature_cols = meta["numeric_features"] + meta["categorical_features"]
+    # ensure expected columns exist
+    for c in feature_cols:
+        if c not in latest.columns:
+            latest[c] = 0 if c in meta["numeric_features"] else "unknown"
+    return latest, feature_cols
 
-def approximate_channel_roi():
-    """
-    Build a very rough ROI per unit spend for each channel by averaging the coefficients
-    for that channel's related features. This is an approximation for demo purposes.
-    """
-    coefs = load_model_coefficients()
-    channels = {
-        "google_ads": ["google_ads_adstock", "google_ads_sat", "google_ads_7d_mean"],
-        "facebook_ads": ["facebook_ads_adstock", "facebook_ads_sat", "facebook_ads_7d_mean"],
-        "influencer": ["influencer_adstock", "influencer_sat", "influencer_7d_mean"],
-    }
-    rois = {}
-    for ch, feats in channels.items():
-        vals = [coefs.get(f, 0.0) for f in feats]
-        # average positive coefficients (if negative, floor to small positive)
-        avg = float(sum(vals) / (len(vals) if len(vals) else 1))
-        rois[ch] = max(0.0001, avg)
-    return rois
+def optimize_budget(total_budget: float, step: float = 500.0, channels=None, max_iters: int = 2000):
+    if channels is None:
+        channels = ["spend_google", "spend_facebook", "spend_influencer"]
 
-def optimize_budget(total_budget):
-    rois = approximate_channel_roi()
-    solver = pywraplp.Solver.CreateSolver("GLOP")
-    g = solver.NumVar(0, total_budget, "google")
-    f = solver.NumVar(0, total_budget, "facebook")
-    i = solver.NumVar(0, total_budget, "influencer")
-    solver.Add(g + f + i <= total_budget)
+    pipeline, meta = load_pipeline_and_meta()
 
-    objective = solver.Objective()
-    objective.SetCoefficient(g, rois["google_ads"])
-    objective.SetCoefficient(f, rois["facebook_ads"])
-    objective.SetCoefficient(i, rois["influencer"])
-    objective.SetMaximization()
+    latest, feature_cols = _prepare_latest_and_feature_cols(meta)
 
-    solver.Solve()
+    # coerce numeric columns in latest
+    for c in meta["numeric_features"]:
+        latest[c] = pd.to_numeric(latest[c], errors="coerce").fillna(0.0)
+
+    # base pred
+    X_base = latest.reindex(columns=feature_cols).copy()
+    for c in meta["numeric_features"]:
+        X_base[c] = pd.to_numeric(X_base[c], errors="coerce").fillna(0.0)
+    for c in meta["categorical_features"]:
+        X_base[c] = X_base[c].astype(str).fillna("unknown")
+
+    base_pred = float(pipeline.predict(X_base)[0])
+
+    allocation = {ch: 0.0 for ch in channels}
+    budget_left = float(total_budget)
+    current = latest.copy()
+    iters = 0
+
+    def marginal_gain(ch):
+        mod = current.copy()
+        mod[ch] = pd.to_numeric(mod[ch], errors="coerce").fillna(0.0) + step
+        X_mod = mod.reindex(columns=feature_cols).copy()
+        for c in meta["numeric_features"]:
+            X_mod[c] = pd.to_numeric(X_mod[c], errors="coerce").fillna(0.0)
+        for c in meta["categorical_features"]:
+            X_mod[c] = X_mod[c].astype(str).fillna("unknown")
+        pred_mod = float(pipeline.predict(X_mod)[0])
+        X_cur = current.reindex(columns=feature_cols).copy()
+        for c in meta["numeric_features"]:
+            X_cur[c] = pd.to_numeric(X_cur[c], errors="coerce").fillna(0.0)
+        for c in meta["categorical_features"]:
+            X_cur[c] = X_cur[c].astype(str).fillna("unknown")
+        pred_cur = float(pipeline.predict(X_cur)[0])
+        return pred_mod - pred_cur
+
+    while budget_left >= step and iters < max_iters:
+        gains = {ch: marginal_gain(ch) for ch in channels}
+        best_ch = max(gains, key=gains.get)
+        best_gain = gains[best_ch]
+        if best_gain <= 0:
+            break
+        allocation[best_ch] += step
+        budget_left -= step
+        current[best_ch] = pd.to_numeric(current[best_ch], errors="coerce").fillna(0.0) + step
+        iters += 1
+
+    X_final = current.reindex(columns=feature_cols).copy()
+    for c in meta["numeric_features"]:
+        X_final[c] = pd.to_numeric(X_final[c], errors="coerce").fillna(0.0)
+    for c in meta["categorical_features"]:
+        X_final[c] = X_final[c].astype(str).fillna("unknown")
+
+    final_pred = float(pipeline.predict(X_final)[0])
+
     return {
-        "google_ads": g.solution_value(),
-        "facebook_ads": f.solution_value(),
-        "influencer": i.solution_value()
+        "initial_prediction": base_pred,
+        "final_prediction": final_pred,
+        "allocated_budget": allocation,
+        "budget_left": budget_left,
+        "iterations": iters
     }
 
 if __name__ == "__main__":
-    cfg = yaml.safe_load(open(CONFIG_PATH))
-    budget = cfg["optimizer"].get("budget", 10000)
-    allocation = optimize_budget(budget)
-    print(f"Budget allocation for total budget {budget}:")
-    print(allocation)
+    print("Demo allocation (10000, step 500):")
+    print(optimize_budget(10000, step=500))

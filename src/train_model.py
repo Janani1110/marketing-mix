@@ -1,80 +1,112 @@
+# src/train_model.py
 """
-src/train_model.py
-
-Train a regularized MMM (Ridge) model using engineered features, save to models/mmm_model.pkl
-Also write model_metadata.yaml with feature list and training metrics.
+Train and save a robust sklearn pipeline for MMM.
+Saves:
+ - models/mmm_pipeline.pkl
+ - models/model_metadata.yaml
 """
 
 import os
-import pickle
 import yaml
-import numpy as np
+import joblib
 import pandas as pd
-from sklearn.linear_model import Ridge
-from sklearn.metrics import r2_score, mean_squared_error
-from feature_engineering import add_features
-from etl import load_and_clean
+import numpy as np
 
-CONFIG_PATH = "config/config.yaml"
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.linear_model import Ridge
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score, mean_squared_error
+
+from src.etl import load_and_clean
+from src.feature_engineering import prepare_features
+
 MODEL_DIR = "models"
-MODEL_FILE = os.path.join(MODEL_DIR, "mmm_model.pkl")
+PIPELINE_FILE = os.path.join(MODEL_DIR, "mmm_pipeline.pkl")
 META_FILE = os.path.join(MODEL_DIR, "model_metadata.yaml")
+CONFIG_PATH = "config/config.yaml"
 
 def load_config():
-    with open(CONFIG_PATH, "r") as f:
+    with open(CONFIG_PATH) as f:
         return yaml.safe_load(f)
 
-def prepare_train_data(df):
-    df_feats = add_features(df)
-    # choose features
-    feature_cols = [
-        "google_ads_adstock", "facebook_ads_adstock", "influencer_adstock",
-        "google_ads_sat", "facebook_ads_sat", "influencer_sat",
-        "discount", "google_ads_7d_mean", "facebook_ads_7d_mean", "influencer_7d_mean",
-        "is_weekend"
-    ]
-    X = df_feats[feature_cols].fillna(0).values
-    y = df_feats[load_config()["model"]["target"]].values
-    return X, y, feature_cols
+def build_pipeline(numeric_features, categorical_features):
+    numeric_transformer = Pipeline(steps=[("scaler", StandardScaler())])
+    categorical_transformer = Pipeline(steps=[("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=False))])
 
-def train_and_save():
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    # load & clean data
-    df = load_and_clean()
-    X, y, feature_cols = prepare_train_data(df)
-
-    # Train/test split simple - last 20% as test
-    split = int(0.8 * len(X))
-    if split < 1:
-        split = 1
-    X_train, X_test = X[:split], X[split:]
-    y_train, y_test = y[:split], y[split:]
+    preprocessor = ColumnTransformer(transformers=[
+        ("num", numeric_transformer, numeric_features),
+        ("cat", categorical_transformer, categorical_features)
+    ], remainder="drop")
 
     model = Ridge(alpha=1.0)
-    model.fit(X_train, y_train)
+    pipeline = Pipeline(steps=[("preprocessor", preprocessor), ("model", model)])
+    return pipeline
 
-    y_pred = model.predict(X_test) if len(X_test) else model.predict(X_train)
-    r2 = r2_score(y_test, y_pred) if len(y_test) else r2_score(y_train, model.predict(X_train))
-    rmse = mean_squared_error(y_test, y_pred, squared=False) if len(y_test) else mean_squared_error(y_train, model.predict(X_train), squared=False)
+def prepare_training_data():
+    df = load_and_clean()
+    df = prepare_features(df)
 
-    # Save model
-    with open(MODEL_FILE, "wb") as f:
-        pickle.dump(model, f)
+    cfg = load_config()
+    target = cfg["model"]["target"]
+    if target not in df.columns:
+        raise ValueError(f"Target '{target}' not found in data")
 
-    # Save meta
+    # dynamic feature detection (exclude date + target)
+    ignore_cols = {"date", target}
+    numeric_cols = [c for c in df.columns if c not in ignore_cols and pd.api.types.is_numeric_dtype(df[c])]
+    categorical_cols = [c for c in ["promo_type", "season"] if c in df.columns]
+
+    # coerce numeric columns to floats and fillna
+    for c in numeric_cols:
+        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
+
+    # fill categorical missing values and cast to str
+    for c in categorical_cols:
+        df[c] = df[c].fillna("unknown").astype(str)
+
+    X = df[numeric_cols + categorical_cols].copy()
+    y = df[target].astype(float).values
+
+    return X, y, numeric_cols, categorical_cols
+
+def train_and_save(test_size=0.2, random_state=42):
+    os.makedirs(MODEL_DIR, exist_ok=True)
+
+    X, y, numeric_features, categorical_features = prepare_training_data()
+
+    if len(X) < 20:
+        raise ValueError("Not enough rows to train model. Need >= 20 rows.")
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, shuffle=False)
+
+    pipeline = build_pipeline(numeric_features, categorical_features)
+    pipeline.fit(X_train, y_train)
+
+    # metrics
+    y_pred = pipeline.predict(X_test)
+    r2 = float(r2_score(y_test, y_pred))
+    rmse = float(mean_squared_error(y_test, y_pred, squared=False))
+
+    # save pipeline and metadata
+    joblib.dump(pipeline, PIPELINE_FILE)
     meta = {
-        "feature_cols": feature_cols,
-        "r2": float(r2),
-        "rmse": float(rmse),
+        "target": load_config()["model"]["target"],
+        "numeric_features": numeric_features,
+        "categorical_features": categorical_features,
+        "r2": r2,
+        "rmse": rmse,
         "n_train": int(len(X_train)),
         "n_test": int(len(X_test))
     }
     with open(META_FILE, "w") as f:
         yaml.safe_dump(meta, f)
 
-    print(f"Trained model saved to {MODEL_FILE}")
+    print(f"Pipeline saved to {PIPELINE_FILE}")
     print(f"Metadata saved to {META_FILE}")
     print(f"Metrics: r2={r2:.4f}, rmse={rmse:.2f}")
+    return pipeline, meta
 
 if __name__ == "__main__":
     train_and_save()

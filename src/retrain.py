@@ -1,33 +1,74 @@
 """
 src/retrain.py
 
-Simple retrain loop that regenerates clean data and retrains the model.
-Set `retrain.run_every_minutes` in config/config.yaml to control automatic retraining.
+Runs the ETL cleaning + full model retraining cycle.
+
+Controlled by config/config.yaml:
+
+retrain:
+    enabled: true
+    run_every_minutes: 15
 """
 
 import time
 import yaml
-from train_model import train_and_save
+from src.etl import load_and_clean
+from src.train_model import train_and_save
 
 CONFIG_PATH = "config/config.yaml"
 
+
 def load_config():
-    return yaml.safe_load(open(CONFIG_PATH))
+    with open(CONFIG_PATH, "r") as f:
+        return yaml.safe_load(f)
+
+
+def run_full_retrain_cycle():
+    """
+    Executes a full retrain cycle:
+        1. Clean + merge historical + streamed data
+        2. Train model and save pipeline + metadata
+    """
+    print("\n=================================")
+    print("🔥 Starting full retrain cycle...")
+    print("=================================")
+
+    # Step 1 — ETL cleaning
+    print("→ Running ETL (load + merge + clean)...")
+    df = load_and_clean()
+    print(f"✓ ETL complete. Clean rows: {len(df)}")
+
+    # Step 2 — Train model using cleaned data
+    print("→ Training MMM model...")
+    pipeline, meta = train_and_save()
+    print("✓ Model retraining complete.")
+
+    print("=================================")
+    print("✅ Retrain cycle finished")
+    print("=================================\n")
+
+    return pipeline, meta
+
 
 def main():
     cfg = load_config()
-    run_every = cfg.get("retrain", {}).get("run_every_minutes", None)
     enabled = cfg.get("retrain", {}).get("enabled", False)
-    if enabled and run_every:
-        print(f"Auto-retrain enabled every {run_every} minutes. Ctrl-C to stop.")
+    interval = cfg.get("retrain", {}).get("run_every_minutes", None)
+
+    # Auto retrain loop
+    if enabled and interval:
+        print(f"Auto-retrain enabled: running every {interval} minutes. Press Ctrl-C to stop.")
         try:
             while True:
-                train_and_save()
-                time.sleep(run_every * 60)
+                run_full_retrain_cycle()
+                time.sleep(interval * 60)
         except KeyboardInterrupt:
-            print("Auto-retrain stopped by user.")
+            print("\nAuto-retrain stopped by user.")
     else:
-        train_and_save()
+        # Single run
+        print("Auto-retrain disabled → running a single cycle now.")
+        run_full_retrain_cycle()
+
 
 if __name__ == "__main__":
     main()

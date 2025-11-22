@@ -1,62 +1,130 @@
+# dashboard/app.py
 """
-dashboard/app.py
+Streamlit dashboard updated for expanded MMM dataset.
 
-Streamlit dashboard for the real-time MMM demo.
-Shows time series, latest predicted revenue, channel contributions, and a budget optimizer.
+Run:
+    streamlit run dashboard/app.py
 """
+
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import streamlit as st
 import pandas as pd
 import yaml
-import os
-from src.predict import predict_latest
+
 from src.etl import load_and_clean
+from src.feature_engineering import prepare_features
+from src.train_model import train_and_save
+from src.predict import predict_latest, channel_contributions_finite_diff
 from src.optimizer import optimize_budget
 
+CONFIG_PATH = "config/config.yaml"
+cfg = yaml.safe_load(open(CONFIG_PATH))
 
-st.set_page_config(layout="wide", page_title="Real-Time MMM Dashboard")
+st.set_page_config(layout="wide", page_title="Real-Time MMM — Expanded Dataset")
 
-st.title("📈 Real-Time Marketing Mix Modeling (MMM) Dashboard")
+st.title("📊 Real-Time Marketing Mix Modeling — Expanded Dataset")
 
-cfg = yaml.safe_load(open("config/config.yaml"))
 
-# Load cleaned data (this will read combined historical + streamed)
-if os.path.exists(cfg["data"]["clean_path"]):
-    df = pd.read_csv(cfg["data"]["clean_path"], parse_dates=["date"])
-else:
-    # If clean not generated, generate now
-    from src.etl import load_and_clean
-    df = load_and_clean()
-
-# Left column: time series
-col1, col2 = st.columns([2,1])
+# =============================================================
+# LEFT SECTION: TIME SERIES VISUALIZATIONS
+# =============================================================
+col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.subheader("Spends & Revenue (latest)")
-    st.line_chart(df.set_index("date")[["google_ads","facebook_ads","influencer","revenue"]])
+    st.subheader("Spends & Revenue (time series)")
+    df = load_and_clean()
+    df = prepare_features(df)
 
+    ts_cols = [
+        "spend_google",
+        "spend_facebook",
+        "spend_influencer",
+        "revenue"
+    ]
+
+    ts = df.set_index("date")[ts_cols].tail(180)
+    st.line_chart(ts)
+
+
+# =============================================================
+# RIGHT SECTION: LATEST PREDICTION
+# =============================================================
 with col2:
-    st.subheader("Latest Prediction")
+    st.subheader("🤖 Latest Prediction")
+
     try:
-        pred_info = predict_latest()
-        st.metric("Predicted revenue", f"${pred_info['predicted_revenue']:.0f}")
-        st.write("Channel contributions (approx):")
-        st.write(pd.DataFrame.from_dict(pred_info["contributions"], orient="index", columns=["contribution"]).assign(contribution=lambda d: d["contribution"].round(2)))
-        st.write("Residual / intercept info:")
-        st.write({"intercept": round(pred_info["intercept"],2), "residual": round(pred_info["residual"],2)})
+        pred = predict_latest()
+        st.metric("Predicted Revenue", f"${pred['predicted_revenue']:.0f}")
+
+        st.write("Latest Input Row:")
+        st.json(pred["input_row"])
+
     except Exception as e:
         st.error(f"Prediction error: {e}")
 
-st.markdown("---")
-st.subheader("Budget Optimizer")
-budget = st.number_input("Total budget (USD)", value=cfg["optimizer"]["budget"], step=1000)
-if st.button("Optimize allocation"):
-    try:
-        alloc = optimize_budget(budget)
-        st.write(pd.Series(alloc).rename("allocated"))
-    except Exception as e:
-        st.error(f"Optimization error: {e}")
 
+# =============================================================
+# CHANNEL CONTRIBUTIONS
+# =============================================================
 st.markdown("---")
-st.subheader("Data Inspector")
-st.write(df.tail(10))
+st.subheader("📉 Channel Contributions (Finite Difference)")
+
+try:
+    contr = channel_contributions_finite_diff(delta=500.0)
+
+    st.write(
+        pd.Series(
+            contr["contributions"],
+            name="Estimated Revenue Lift per +$500 Spend"
+        )
+    )
+
+except Exception as e:
+    st.error(f"Contribution calc error: {e}")
+
+
+# =============================================================
+# BUDGET OPTIMIZER SECTION
+# =============================================================
+st.markdown("---")
+st.subheader("💰 Budget Optimizer")
+
+budget = st.number_input(
+    "Total budget to allocate (USD)",
+    value=int(cfg["optimizer"]["budget"]),
+    step=1000
+)
+
+step = st.number_input(
+    "Allocation step size (USD)",
+    value=500,
+    step=100
+)
+
+if st.button("Run optimizer"):
+    try:
+        with st.spinner("Optimizing..."):
+            alloc = optimize_budget(float(budget), step=float(step))
+
+            st.write(f"Initial prediction: **{int(alloc['initial_prediction'])}**")
+            st.write(f"Final prediction after optimization: **{int(alloc['final_prediction'])}**")
+
+            st.write("Recommended Spend Allocation:")
+            st.write(pd.Series(alloc["allocated_budget"]).astype(float))
+
+            st.write("Budget Left:", alloc["budget_left"])
+            st.write("Iterations:", alloc["iterations"])
+
+    except Exception as e:
+        st.error(f"Optimizer error: {e}")
+
+
+# =============================================================
+# DATA INSPECTOR
+# =============================================================
+st.markdown("---")
+st.subheader("🗂 Data Inspector — Latest Rows")
+
+st.dataframe(df.tail(10))

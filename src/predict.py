@@ -1,69 +1,82 @@
+# src/predict.py
 """
-src/predict.py
-
-Load the trained model and run a prediction for the latest row.
-Also compute a simple channel contribution breakdown using model coefficients on
-channel-related features.
+Safe prediction helpers for the MMM model.
 """
 
-import pickle
-import yaml
-import numpy as np
-import pandas as pd
-from src.feature_engineering import add_features
-from src.etl import load_and_clean
 import os
+import joblib
+import yaml
+import pandas as pd
+import numpy as np
 
-MODEL_FILE = "models/mmm_model.pkl"
+from src.feature_engineering import prepare_features
+from src.etl import load_and_clean
+
+PIPELINE_FILE = "models/mmm_pipeline.pkl"
 META_FILE = "models/model_metadata.yaml"
 CONFIG_PATH = "config/config.yaml"
 
-def load_model_and_meta():
-    if not os.path.exists(MODEL_FILE):
-        raise FileNotFoundError(f"Model not found. Train first: {MODEL_FILE}")
-    with open(MODEL_FILE, "rb") as f:
-        model = pickle.load(f)
-    with open(META_FILE, "r") as f:
-        meta = yaml.safe_load(f)
-    return model, meta
+def load_pipeline_and_meta():
+    if not os.path.exists(PIPELINE_FILE):
+        raise FileNotFoundError("Trained pipeline not found. Run src.train_model first.")
+    pipeline = joblib.load(PIPELINE_FILE)
+    if not os.path.exists(META_FILE):
+        raise FileNotFoundError("Model metadata not found. Run training first.")
+    meta = yaml.safe_load(open(META_FILE))
+    return pipeline, meta
 
-def predict_latest():
-    model, meta = load_model_and_meta()
+def _ensure_X_for_pipeline(df: pd.DataFrame, meta: dict) -> pd.DataFrame:
+    feature_cols = meta["numeric_features"] + meta["categorical_features"]
+    X = df.reindex(columns=feature_cols).copy()
+
+    # Force numerics
+    for c in meta["numeric_features"]:
+        if c in X.columns:
+            X[c] = pd.to_numeric(X[c], errors="coerce").fillna(0.0)
+        else:
+            X[c] = 0.0
+
+    # Force categoricals
+    for c in meta["categorical_features"]:
+        if c in X.columns:
+            X[c] = X[c].fillna("unknown").astype(str)
+        else:
+            X[c] = "unknown"
+
+    return X[feature_cols]
+
+def predict_latest(n_rows=1):
+    pipeline, meta = load_pipeline_and_meta()
     df = load_and_clean()
-    df_feats = add_features(df)
-    latest = df_feats.iloc[-1:]
-    feature_cols = meta["feature_cols"]
-    X = latest[feature_cols].fillna(0).values
-    pred = model.predict(X)[0]
-    # derive contributions: multiply coeffs with channel-level features and sum
-    coefs = np.array(model.coef_)
-    coef_map = dict(zip(feature_cols, coefs))
-    # simple contributions by grouping relevant features
-    channels = {
-        "google_ads": ["google_ads_adstock", "google_ads_sat", "google_ads_7d_mean"],
-        "facebook_ads": ["facebook_ads_adstock", "facebook_ads_sat", "facebook_ads_7d_mean"],
-        "influencer": ["influencer_adstock", "influencer_sat", "influencer_7d_mean"],
-        "discount": ["discount"]
-    }
+    df = prepare_features(df)
+    if len(df) < n_rows:
+        raise ValueError("Not enough rows for prediction.")
+    latest = df.tail(n_rows).copy().reset_index(drop=True)
+    X = _ensure_X_for_pipeline(latest, meta)
+    preds = pipeline.predict(X)
+    return {"predicted_revenue": float(preds[0]), "input_row": latest.iloc[0].to_dict()}
+
+def channel_contributions_finite_diff(delta=100.0, channels=None):
+    if channels is None:
+        channels = ["spend_google", "spend_facebook", "spend_influencer"]
+    pipeline, meta = load_pipeline_and_meta()
+    df = load_and_clean()
+    df = prepare_features(df)
+    latest = df.tail(1).copy().reset_index(drop=True)
+    X_base = _ensure_X_for_pipeline(latest, meta)
+    base_pred = float(pipeline.predict(X_base)[0])
     contributions = {}
-    for ch, feats in channels.items():
-        val = 0.0
-        for f in feats:
-            if f in latest.columns:
-                val += coef_map.get(f, 0.0) * float(latest.iloc[0][f])
-        contributions[ch] = float(val)
-    # leftover = intercept + other features (weekend)
-    intercept = float(model.intercept_) if hasattr(model, "intercept_") else 0.0
-    explained = sum(contributions.values())
-    residual = float(pred) - explained - intercept
-    return {
-        "predicted_revenue": float(pred),
-        "contributions": contributions,
-        "intercept": intercept,
-        "residual": residual
-    }
+    for ch in channels:
+        if ch not in latest.columns:
+            contributions[ch] = 0.0
+            continue
+        modified = latest.copy()
+        modified[ch] = pd.to_numeric(modified[ch], errors="coerce").fillna(0.0) + delta
+        X_mod = _ensure_X_for_pipeline(modified, meta)
+        pred_mod = float(pipeline.predict(X_mod)[0])
+        contributions[ch] = pred_mod - base_pred
+    return {"base_prediction": base_pred, "delta": delta, "contributions": contributions}
 
 if __name__ == "__main__":
-    out = predict_latest()
-    print("Prediction result:")
-    print(out)
+    print("Latest prediction:", predict_latest())
+    print("Contributions:", channel_contributions_finite_diff())
