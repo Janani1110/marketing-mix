@@ -3,7 +3,13 @@
 Safe prediction helpers for the MMM model.
 """
 
+import sys
 import os
+# Add project root to sys.path
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
+
 import joblib
 import yaml
 import pandas as pd
@@ -12,9 +18,9 @@ import numpy as np
 from src.feature_engineering import prepare_features
 from src.etl import load_and_clean
 
-PIPELINE_FILE = "models/mmm_pipeline.pkl"
-META_FILE = "models/model_metadata.yaml"
-CONFIG_PATH = "config/config.yaml"
+PIPELINE_FILE = os.path.join(ROOT_DIR, "models", "mmm_pipeline.pkl")
+META_FILE = os.path.join(ROOT_DIR, "models", "model_metadata.yaml")
+CONFIG_PATH = os.path.join(ROOT_DIR, "config", "config.yaml")
 
 def load_pipeline_and_meta():
     if not os.path.exists(PIPELINE_FILE):

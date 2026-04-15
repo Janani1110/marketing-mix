@@ -7,6 +7,12 @@ Saves:
 """
 
 import os
+import sys
+# Add project root to sys.path
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
+
 import yaml
 import joblib
 import pandas as pd
@@ -22,10 +28,10 @@ from sklearn.metrics import r2_score, mean_squared_error
 from src.etl import load_and_clean
 from src.feature_engineering import prepare_features
 
-MODEL_DIR = "models"
+MODEL_DIR = os.path.join(ROOT_DIR, "models")
 PIPELINE_FILE = os.path.join(MODEL_DIR, "mmm_pipeline.pkl")
 META_FILE = os.path.join(MODEL_DIR, "model_metadata.yaml")
-CONFIG_PATH = "config/config.yaml"
+CONFIG_PATH = os.path.join(ROOT_DIR, "config", "config.yaml")
 
 def load_config():
     with open(CONFIG_PATH) as f:

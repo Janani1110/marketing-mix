@@ -6,6 +6,10 @@ Safe greedy budget allocator that uses the trained pipeline + metadata.
 import pandas as pd
 import numpy as np
 
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from src.predict import load_pipeline_and_meta
 from src.feature_engineering import prepare_features
 from src.etl import load_and_clean

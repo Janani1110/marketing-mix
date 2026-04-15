@@ -15,8 +15,9 @@ from datetime import datetime
 import numpy as np
 import yaml
 
-CONFIG_PATH = "config/config.yaml"
-STREAM_FILE = "data/streamed_data.csv"
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_PATH = os.path.join(ROOT_DIR, "config", "config.yaml")
+STREAM_FILE = os.path.join(ROOT_DIR, "data", "streamed_data.csv")
 
 PROMO_TYPES = ["email", "tv", "radio", "social", "holiday"]
 SEASONS = ["winter", "spring", "summer", "fall"]

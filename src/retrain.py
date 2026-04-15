@@ -12,10 +12,17 @@ retrain:
 
 import time
 import yaml
+import sys
+import os
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
+
 from src.etl import load_and_clean
 from src.train_model import train_and_save
 
-CONFIG_PATH = "config/config.yaml"
+CONFIG_PATH = os.path.join(ROOT_DIR, "config", "config.yaml")
 
 
 def load_config():

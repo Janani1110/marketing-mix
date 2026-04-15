@@ -8,7 +8,8 @@ import pandas as pd
 import os
 import yaml
 
-CONFIG_PATH = "config/config.yaml"
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_PATH = os.path.join(ROOT_DIR, "config", "config.yaml")
 
 def load_config():
     with open(CONFIG_PATH) as f:
@@ -16,8 +17,8 @@ def load_config():
 
 def load_dataframes():
     cfg = load_config()
-    hist_path = cfg["data"]["historical_path"]
-    stream_path = cfg["data"]["streamed_path"]
+    hist_path = os.path.join(ROOT_DIR, cfg["data"]["historical_path"])
+    stream_path = os.path.join(ROOT_DIR, cfg["data"]["streamed_path"])
 
     if not os.path.exists(hist_path):
         raise FileNotFoundError(f"Historical data not found: {hist_path}")
@@ -67,7 +68,7 @@ def simple_clean(df: pd.DataFrame) -> pd.DataFrame:
 
 def load_and_clean():
     cfg = load_config()
-    out_path = cfg["data"]["clean_path"]
+    out_path = os.path.join(ROOT_DIR, cfg["data"]["clean_path"])
 
     df_hist, df_stream = load_dataframes()
     df = pd.concat([df_hist, df_stream], ignore_index=True)
