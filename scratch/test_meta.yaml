@@ -1,12 +1,8 @@
 categorical_features:
 - promo_type
 - season
-n_test: 74
-n_train: 295
 numeric_features:
 - spend_google
 - spend_facebook
 - spend_influencer
-r2: 0.034564477031767016
-rmse: 55012.226530303444
 target: revenue

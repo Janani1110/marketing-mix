@@ -32,11 +32,14 @@ df = prepare_features(df)
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.subheader("📈 Revenue vs Spend (Last 180 days)")
-    ts_cols = ["spend_google","spend_facebook","spend_influencer","revenue"]
+    st.subheader("📈 Revenue Trend (Last 180 days)")
+    ts_rev = df.set_index("date")[["revenue"]].tail(180)
+    st.line_chart(ts_rev)
 
-    ts = df.set_index("date")[ts_cols].tail(180)
-    st.line_chart(ts)
+    st.subheader("💸 Marketing Spend by Channel")
+    spend_cols = ["spend_google", "spend_facebook", "spend_influencer"]
+    ts_spend = df.set_index("date")[spend_cols].tail(180)
+    st.area_chart(ts_spend)
 
 with col2:
     st.subheader("📅 Summary Metrics")
@@ -47,7 +50,7 @@ with col2:
 
 st.markdown("### 📦 Spend Mix Breakdown")
 
-spend_cols = [c for c in df.columns if c.startswith("spend_")]
+spend_cols = ["spend_google", "spend_facebook", "spend_influencer"]
 latest_spend = df[spend_cols].iloc[-1]
 
 st.bar_chart(latest_spend)

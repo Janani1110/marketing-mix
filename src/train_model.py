@@ -20,7 +20,7 @@ import numpy as np
 
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler, FunctionTransformer
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error
@@ -38,7 +38,10 @@ def load_config():
         return yaml.safe_load(f)
 
 def build_pipeline(numeric_features, categorical_features):
-    numeric_transformer = Pipeline(steps=[("scaler", StandardScaler())])
+    numeric_transformer = Pipeline(steps=[
+        ("log", FunctionTransformer(np.log1p, validate=False)),
+        ("scaler", StandardScaler())
+    ])
     categorical_transformer = Pipeline(steps=[("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=False))])
 
     preprocessor = ColumnTransformer(transformers=[
@@ -46,7 +49,7 @@ def build_pipeline(numeric_features, categorical_features):
         ("cat", categorical_transformer, categorical_features)
     ], remainder="drop")
 
-    model = Ridge(alpha=1.0)
+    model = Ridge(alpha=1.0, positive=True)
     pipeline = Pipeline(steps=[("preprocessor", preprocessor), ("model", model)])
     return pipeline
 
@@ -59,9 +62,9 @@ def prepare_training_data():
     if target not in df.columns:
         raise ValueError(f"Target '{target}' not found in data")
 
-    # dynamic feature detection (exclude date + target)
-    ignore_cols = {"date", target}
-    numeric_cols = [c for c in df.columns if c not in ignore_cols and pd.api.types.is_numeric_dtype(df[c])]
+    # dynamic feature detection: restrict strictly to MMM spending drivers instead of conversions
+    base_numeric = ["spend_google", "spend_facebook", "spend_influencer"]
+    numeric_cols = [c for c in base_numeric if c in df.columns]
     categorical_cols = [c for c in ["promo_type", "season"] if c in df.columns]
 
     # coerce numeric columns to floats and fillna

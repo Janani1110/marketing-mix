@@ -50,10 +50,10 @@ def generate_row():
 
     # --- Sessions ---
     sessions = int(
-        clicks_google * 0.6 +
-        clicks_facebook * 0.55 +
-        clicks_influencer * 0.5 +
-        np.random.normal(2000, 500)
+        clicks_google * 1.5 +
+        clicks_facebook * 1.8 +
+        clicks_influencer * 2.2 +
+        np.random.normal(500, 100)
     )
 
     # --- Conversion rate ---
