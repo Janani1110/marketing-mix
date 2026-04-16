@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marketing Mix Analytics Dashboard</title>
+    <!-- Modern Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Sidebar Output Deleted -->
+
+        <!-- Main Content Area -->
+        <main class="content-area">
+            
+            <!-- Home Page -->
+            <section id="home" class="view-section active fade-in">
+                <div class="hero-section">
+                    <h1 class="hero-title">Intelligent <span class="gradient-text" style="display:inline-block">Marketing Mix</span></h1>
+                    <p class="hero-subtitle">Experience real-time analytics, predictive modeling, and automated budget optimization powered by robust machine learning.</p>
+                    <button class="primary-btn hero-btn" onclick="navigateTo('optimizer')">Optimize Budget Now</button>
+                </div>
+                
+                <div class="features-grid">
+                    <div class="feature-card glass-container" onclick="navigateTo('time-series')">
+                        <div class="feature-icon">📊</div>
+                        <h3>Time-Series</h3>
+                        <p>Explore highly saturated metrics and performance trends over rolling intervals organically.</p>
+                    </div>
+                    <div class="feature-card glass-container" onclick="navigateTo('predictions')">
+                        <div class="feature-icon">🤖</div>
+                        <h3>Predictions</h3>
+                        <p>Inject hypothetical inputs and predict revenue outcomes against live, adaptive machine learning models.</p>
+                    </div>
+                    <div class="feature-card glass-container" onclick="navigateTo('contributions')">
+                        <div class="feature-icon">📈</div>
+                        <h3>Contributions</h3>
+                        <p>Utilize finite-difference analysis to isolate exact monetary returns per marketing channel.</p>
+                    </div>
+                    <div class="feature-card glass-container" onclick="navigateTo('optimizer')">
+                        <div class="feature-icon">💰</div>
+                        <h3>Budget Optimizer</h3>
+                        <p>Algorithmically deploy maximum capital avoiding saturation asymptotes to yield strictly optimal returns.</p>
+                    </div>
+                    <div class="feature-card glass-container" onclick="navigateTo('retraining')">
+                        <div class="feature-icon">🔄</div>
+                        <h3>Live Retraining</h3>
+                        <p>Re-evaluate current weights utilizing the live structured stream dynamically.</p>
+                    </div>
+                    <div class="feature-card glass-container" onclick="navigateTo('inspector')">
+                        <div class="feature-icon">🧪</div>
+                        <h3>Data Inspector</h3>
+                        <p>Scan and audit raw input sources and live production datasets directly.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Time Series Page -->
+            <section id="time-series" class="view-section fade-in">
+                <button class="primary-btn mb-4" onclick="navigateTo('home')" style="width:auto; margin-bottom: 2rem;">⬅ Back to Home</button>
+                <h1 class="gradient-text">Time Series Analysis</h1>
+                <div class="dashboard-grid">
+                    <div class="glass-container chart-card">
+                        <h3>📈 Revenue Trend (Last 180 days)</h3>
+                        <canvas id="revenueChart"></canvas>
+                    </div>
+                    <div class="glass-container metric-card" id="ts-metrics">
+                        <!-- Loaded dynamically -->
+                    </div>
+                    <div class="glass-container chart-card span-2">
+                        <h3>💸 Marketing Spend by Channel</h3>
+                        <canvas id="spendChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Predictions Page -->
+            <section id="predictions" class="view-section fade-in">
+                <button class="primary-btn mb-4" onclick="navigateTo('home')" style="width:auto; margin-bottom: 2rem;">⬅ Back to Home</button>
+                <h1 class="gradient-text">Revenue Predictions</h1>
+                <div class="dashboard-grid">
+                    <div class="glass-container form-card">
+                        <h3>Adjust Inputs</h3>
+                        <div class="input-group">
+                            <label>Google Spend ($)</label>
+                            <input type="number" id="pred-google" value="1000">
+                        </div>
+                        <div class="input-group">
+                            <label>Facebook Spend ($)</label>
+                            <input type="number" id="pred-facebook" value="1000">
+                        </div>
+                        <div class="input-group">
+                            <label>Influencer Spend ($)</label>
+                            <input type="number" id="pred-influencer" value="1000">
+                        </div>
+                        <div class="input-group">
+                            <label>Discount (%)</label>
+                            <input type="number" id="pred-discount" step="0.01" value="0.05">
+                        </div>
+                        <div class="input-group">
+                            <label>Promo Type</label>
+                            <select id="pred-promo">
+                                <option value="email">Email</option>
+                                <option value="social">Social</option>
+                                <option value="none">None</option>
+                            </select>
+                        </div>
+                        <button class="primary-btn mt-2" onclick="runPrediction()">Generate Prediction</button>
+                    </div>
+                    <div class="glass-container result-card">
+                        <h3>Predicted Revenue</h3>
+                        <h2 class="massive-metric" id="pred-result">Waiting...</h2>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Contributions Page -->
+            <section id="contributions" class="view-section fade-in">
+                <button class="primary-btn mb-4" onclick="navigateTo('home')" style="width:auto; margin-bottom: 2rem;">⬅ Back to Home</button>
+                <h1 class="gradient-text">Channel Contributions</h1>
+                <div class="glass-container chart-card">
+                    <h3>Estimated Lift per +$500 Spend</h3>
+                    <canvas id="contributionsChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Optimizer Page -->
+            <section id="optimizer" class="view-section fade-in">
+                <button class="primary-btn mb-4" onclick="navigateTo('home')" style="width:auto; margin-bottom: 2rem;">⬅ Back to Home</button>
+                <h1 class="gradient-text">Budget Optimizer</h1>
+                <div class="dashboard-grid">
+                    <div class="glass-container form-card">
+                        <h3>Configure Budget</h3>
+                        <div class="input-group">
+                            <label>Total Budget ($)</label>
+                            <input type="number" id="opt-budget" value="10000">
+                        </div>
+                        <div class="input-group">
+                            <label>Step Size ($)</label>
+                            <input type="number" id="opt-step" value="500">
+                        </div>
+                        <button class="primary-btn mt-2" onclick="runOptimization()">Optimize</button>
+                    </div>
+                    <div class="glass-container chart-card split">
+                        <div id="opt-metrics" class="opt-metrics-box">
+                            <!-- Metrics added via JS -->
+                        </div>
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="optChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Retraining Page -->
+            <section id="retraining" class="view-section fade-in">
+                <button class="primary-btn mb-4" onclick="navigateTo('home')" style="width:auto; margin-bottom: 2rem;">⬅ Back to Home</button>
+                <h1 class="gradient-text">Model Retraining</h1>
+                <div class="glass-container center-text">
+                    <p>Re-evaluate current weights utilizing the live `data/clean_data.csv` stream.</p>
+                    <button class="primary-btn massive-btn" onclick="runRetrain()" id="retrain-btn">Trigger Full Retrain</button>
+                    <pre id="retrain-logs" class="log-box hidden"></pre>
+                </div>
+            </section>
+
+            <!-- Data Inspector Page -->
+            <section id="inspector" class="view-section fade-in">
+                <button class="primary-btn mb-4" onclick="navigateTo('home')" style="width:auto; margin-bottom: 2rem;">⬅ Back to Home</button>
+                <h1 class="gradient-text">Data Inspector</h1>
+                <div class="glass-container table-container">
+                    <table class="data-table" id="data-table">
+                        <thead>
+                            <tr id="table-headers"></tr>
+                        </thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>
